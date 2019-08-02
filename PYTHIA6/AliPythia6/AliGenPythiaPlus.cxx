@@ -99,7 +99,12 @@ AliGenPythiaPlus::AliGenPythiaPlus():
     fNewMIS(kFALSE),   
     fHFoff(kFALSE),    
     fTriggerParticle(0),
-    fTriggerEta(0.9),     
+    fTriggerEta(0.9),
+    fTriggerMultiplicity(0),
+    fTriggerMultiplicityEta(0),
+    fTriggerMultiplicityEtaMin(0),
+    fTriggerMultiplicityEtaMax(0),
+    fTriggerMultiplicityPtMin(0),  
     fCountMode(kCountAll),      
     fHeader(0),  
     fRL(0),      
@@ -199,6 +204,11 @@ AliGenPythiaPlus::AliGenPythiaPlus(AliPythiaBase* pythia)
      fHFoff(kFALSE),    
      fTriggerParticle(0),
      fTriggerEta(0.9),     
+     fTriggerMultiplicity(0),
+     fTriggerMultiplicityEta(0),
+     fTriggerMultiplicityEtaMin(0),
+     fTriggerMultiplicityEtaMax(0),
+     fTriggerMultiplicityPtMin(0),  
      fCountMode(kCountAll),      
      fHeader(0),  
      fRL(0),      
@@ -328,7 +338,10 @@ void AliGenPythiaPlus::Init()
     
 //    SetMC(AliPythia::Instance());
 //    fPythia=(AliPythia*) fMCEvGen;
-    
+  
+    // Coeffs to go from mm / mm to meter / second
+    SetGeneratorUnitsForMeterSecond(1.e-3, 1e-3/TMath::C()); 
+  
 //
     fParentWeight=1./Float_t(fNpart);
 //
@@ -886,6 +899,42 @@ Int_t  AliGenPythiaPlus::GenerateMB()
       }
     }
     
+    // Check for minimum multiplicity
+    if (fTriggerMultiplicity > 0) {
+      Int_t multiplicity = 0;
+      for (i = 0; i < np; i++) {
+	TParticle *  iparticle = (TParticle *) fParticles.At(i);
+	
+	Int_t statusCode = iparticle->GetStatusCode();
+	
+	// Initial state particle
+	if (statusCode != 1)
+	  continue;
+	// eta cut
+	if (fTriggerMultiplicityEta > 0 && TMath::Abs(iparticle->Eta()) > fTriggerMultiplicityEta)
+	  continue;
+	//multiplicity check for a given eta range
+	if ((fTriggerMultiplicityEtaMin != fTriggerMultiplicityEtaMax) && 
+	    (iparticle->Eta() < fTriggerMultiplicityEtaMin || iparticle->Eta() > fTriggerMultiplicityEtaMax))
+	  continue;
+	// pt cut
+	if (iparticle->Pt() < fTriggerMultiplicityPtMin) 
+	    continue;
+
+	TParticlePDG* pdgPart = iparticle->GetPDG();
+	if (pdgPart && pdgPart->Charge() == 0)
+	  continue;
+	
+	++multiplicity;
+      }
+
+      if (multiplicity < fTriggerMultiplicity) {
+	delete [] pParent;
+	return 0;
+      }
+      Printf("Triggered on event with multiplicity of %d >= %d", multiplicity, fTriggerMultiplicity);
+    }
+    
     if (fTriggerParticle) {
 	Bool_t triggered = kFALSE;
 	for (i = 0; i < np; i++) {
@@ -918,8 +967,10 @@ Int_t  AliGenPythiaPlus::GenerateMB()
 	pdg = partCheck->GetPdgCode();  
 	if(TMath::Abs(pdg) == fFlavorSelect) { // quark  
 	  if(pdg>0) { theQ=kTRUE; } else { theQbar=kTRUE; }
-	  y = 0.5*TMath::Log((partCheck->Energy()+partCheck->Pz()+1.e-13)/
+
+      	if(partCheck->Energy()-TMath::Abs(partCheck->Pz()) > FLT_EPSILON) y = 0.5*TMath::Log((partCheck->Energy()+partCheck->Pz()+1.e-13)/
 			     (partCheck->Energy()-partCheck->Pz()+1.e-13));
+	  	else y = 9999.;
 	  if(fUseYCutHQ && y>fYMinHQ && y<fYMaxHQ) inYcut=kTRUE;
 	  if(!fUseYCutHQ && y>fYMin && y<fYMax) inYcut=kTRUE;
 	}

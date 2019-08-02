@@ -46,11 +46,12 @@ public AliDecayer
     Int_t    CountProducts(Int_t channel, Int_t particle);
     void     ForceParticleDecay(Int_t particle, Int_t product, Int_t mult);
     void     ForceParticleDecay(Int_t particle, const Int_t* products, Int_t* mult, Int_t npart, Bool_t flag = 0);
-    void     ForceHadronicD(Int_t optUse4Bodies=1, Int_t optUseDtoV0=0,Int_t optForceLcChannel=0);
+    void     ForceHadronicD(Int_t optUse4Bodies=1, Int_t optUseDtoV0=0,Int_t optForceLcChannel=0, Int_t optUsePionicD0 = 0);
     void     ForceOmega();
     void     ForceLambda();
     void     SwitchOffHeavyFlavour();
     void     ForceBeautyUpgrade();
+    void     ForceHFYellowReport();
     Float_t  GetBraPart(Int_t kf);
     void     Copy(TObject &decayer) const;
 
@@ -69,7 +70,7 @@ public AliDecayer
     Bool_t      fPi0;             //! Flag for pi0 decay 
     static Bool_t fgInit;         //! initialization flag 
     
-    ClassDef(AliDecayerPythia, 6) // AliDecayer implementation using Pythia  
+    ClassDef(AliDecayerPythia, 7) // AliDecayer implementation using Pythia  
 };
 #endif
 

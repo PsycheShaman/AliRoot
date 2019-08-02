@@ -180,7 +180,9 @@ AliESDEvent::AliESDEvent():
   fDetectorStatus(0xFFFFFFFF),
   fDAQDetectorPattern(0xFFFF),
   fDAQAttributes(0xFFFF),
-  fNTPCClusters(0)
+  fNTPCClusters(0),
+  fNTPCTrackBeforeClean(0),
+  fNumberOfESDTracks(-1)
 {
 }
 
@@ -238,7 +240,9 @@ AliESDEvent::AliESDEvent(const AliESDEvent& esd):
   fDetectorStatus(esd.fDetectorStatus),
   fDAQDetectorPattern(esd.fDAQDetectorPattern),
   fDAQAttributes(esd.fDAQAttributes),
-  fNTPCClusters(esd.fNTPCClusters)
+  fNTPCClusters(esd.fNTPCClusters),
+  fNTPCTrackBeforeClean(esd.fNTPCTrackBeforeClean),
+  fNumberOfESDTracks(esd.fNumberOfESDTracks)
 {
   printf("copying ESD event...\n");   // AU
   // CKB init in the constructor list and only add here ...
@@ -384,6 +388,8 @@ AliESDEvent & AliESDEvent::operator=(const AliESDEvent& source) {
   fDAQDetectorPattern = source.fDAQDetectorPattern;
   fDAQAttributes = source.fDAQAttributes;
   fNTPCClusters = source.fNTPCClusters;
+  fNTPCTrackBeforeClean = source.fNTPCTrackBeforeClean;
+  fNumberOfESDTracks = source.fNumberOfESDTracks;
 
   fNTPCFriend2Store = source.fNTPCFriend2Store;
   fTracksConnected = kFALSE;
@@ -438,6 +444,8 @@ void AliESDEvent::Reset()
   fDAQDetectorPattern = 0xFFFF;
   fDAQAttributes = 0xFFFF;
   fNTPCClusters = 0;
+  fNTPCTrackBeforeClean = 0;
+  fNumberOfESDTracks = -1;
   //  reset for the old data without AliESDEvent...
   if(fESDOld)fESDOld->Reset();
   if(fESDFriendOld){
@@ -741,7 +749,7 @@ Bool_t  AliESDEvent::RemoveKink(Int_t rm) const
   if (kink->GetIndex(0)>=0 && kink->GetIndex(1)>=0) { // the indices migh have been already disabled
     for (int i=2;i--;) {
       AliESDtrack* trc = GetTrack(kink->GetIndex(i));
-      int indK[3]={0,0,0},restK=0;
+      int indK[3]={0,0,0};
       for (int j=0;j<3;j++) {
 	int ind = trc->GetKinkIndex(j);
 	if (!ind) break;
@@ -790,7 +798,7 @@ Bool_t  AliESDEvent::RemoveV0(Int_t rm) const
 }
 
 //______________________________________________________________________________
-AliESDfriendTrack*  AliESDEvent::RemoveTrack(Int_t rm, Bool_t checkPrimVtx) const 
+AliESDfriendTrack*  AliESDEvent::RemoveTrack(Int_t rm, Bool_t checkPrimVtx)
 {
 // ---------------------------------------------------------
 // Remove a track and references to it from ESD,
@@ -806,7 +814,7 @@ AliESDfriendTrack*  AliESDEvent::RemoveTrack(Int_t rm, Bool_t checkPrimVtx) cons
   Int_t nv0=GetNumberOfV0s();
   Int_t ncl=GetNumberOfCaloClusters();
   Int_t used=0;
-  Bool_t lastUsePVTrc=kFALSE,lastUsePVTPC=kFALSE,lastUseV0=kFALSE,lastUseCasc=kFALSE;
+  Bool_t lastUsePVTrc=kFALSE,lastUsePVTPC=kFALSE;
 
   if (fTPCVertex && fTPCVertex->GetStatus()) {
     if (checkPrimVtx && fTPCVertex->UsesTrack(rm)) return 0;// Check if this track comes from the reconstructed primary vertices
@@ -875,8 +883,12 @@ AliESDfriendTrack*  AliESDEvent::RemoveTrack(Int_t rm, Bool_t checkPrimVtx) cons
   AliESDfriendTrack* trfKeep = (AliESDfriendTrack*)trm->GetFriendTrack(); // friend should be cleaned in the reco
   trm->ReleaseESDfriendTrack();
   a.RemoveAt(rm);
+
   //
-  if (rm==last) return trfKeep;
+  if (rm==last) {
+    if (fNumberOfESDTracks>=0) SetNumberOfESDTracks(fTracks->GetEntriesFast());
+    return trfKeep;
+  }
 
   AliESDtrack *t=GetTrack(last);
   if (!t) {AliFatal(Form("NULL pointer for ESD track %d",last));}
@@ -891,6 +903,8 @@ AliESDfriendTrack*  AliESDEvent::RemoveTrack(Int_t rm, Bool_t checkPrimVtx) cons
   tfr->SetESDtrackID(rm);
   delete a.RemoveAt(last);
 
+  if (fNumberOfESDTracks>=0) SetNumberOfESDTracks(fTracks->GetEntriesFast());
+  
   // check if moved track was pointing to a kink, fix index
   for (int iki=0;iki<3;iki++) {
     int idkink = trMove->GetKinkIndex(iki);
@@ -1215,8 +1229,9 @@ Int_t  AliESDEvent::AddTrack(const AliESDtrack *t)
     // Add track
     TClonesArray &ftr = *fTracks;
     AliESDtrack * track = new(ftr[fTracks->GetEntriesFast()])AliESDtrack(*t);
-    track->SetID(fTracks->GetEntriesFast()-1);
     track->SetESDEvent(this);
+    SetNumberOfESDTracks(fTracks->GetEntriesFast());
+    track->SetID(fNumberOfESDTracks-1);
     return  track->GetID();    
 }
 
@@ -1226,7 +1241,8 @@ AliESDtrack*  AliESDEvent::NewTrack()
     // Add a new track
     TClonesArray &ftr = *fTracks;
     AliESDtrack * track = new(ftr[fTracks->GetEntriesFast()])AliESDtrack();
-    track->SetID(fTracks->GetEntriesFast()-1);
+    SetNumberOfESDTracks(fTracks->GetEntriesFast());
+    track->SetID(fNumberOfESDTracks-1);
     track->SetESDEvent(this);
     return  track;
 }
@@ -1896,6 +1912,8 @@ void AliESDEvent::WriteToTree(TTree* tree) const {
   tree->Branch("fDAQDetectorPattern",(void*)&fDAQDetectorPattern,"fDAQDetectorPattern/i");
   tree->Branch("fDAQAttributes",(void*)&fDAQAttributes,"fDAQAttributes/i");
   tree->Branch("fNTPCClusters",(void*)&fNTPCClusters,"fNTPCClusters/I");
+  tree->Branch("fNTPCTrackBeforeClean",(void*)&fNTPCTrackBeforeClean,"fNTPCTrackBeforeClean/I");
+  tree->Branch("fNumberOfESDTracks",(void*)&fNumberOfESDTracks,"fNumberOfESDTracks/I");
 }
 
 //______________________________________________________________________________
@@ -1999,6 +2017,8 @@ void AliESDEvent::ReadFromTree(TTree *tree, Option_t* opt){
       tree->SetBranchAddress("fDAQDetectorPattern",&fDAQDetectorPattern);
       tree->SetBranchAddress("fDAQAttributes",&fDAQAttributes);
       tree->SetBranchAddress("fNTPCClusters",&fNTPCClusters);
+      if (tree->GetBranch("fNTPCTrackBeforeClean")) tree->SetBranchAddress("fNTPCTrackBeforeClean",&fNTPCTrackBeforeClean);
+      if (tree->GetBranch("fNumberOfESDTracks")) tree->SetBranchAddress("fNumberOfESDTracks",&fNumberOfESDTracks);
       GetStdContent(); 
       fOldMuonStructure = fESDObjects->TestBit(BIT(23));
       fConnected = true;
@@ -2066,6 +2086,8 @@ void AliESDEvent::ReadFromTree(TTree *tree, Option_t* opt){
     tree->SetBranchAddress("fDAQDetectorPattern",&fDAQDetectorPattern);
     tree->SetBranchAddress("fDAQAttributes",&fDAQAttributes);
     tree->SetBranchAddress("fNTPCClusters",&fNTPCClusters);
+    if (tree->GetBranch("fNTPCTrackBeforeClean")) tree->SetBranchAddress("fNTPCTrackBeforeClean",&fNTPCTrackBeforeClean);
+    if (tree->GetBranch("fNumberOfESDTracks")) tree->SetBranchAddress("fNumberOfESDTracks",&fNumberOfESDTracks);
     GetStdContent();
     // when reading back we are not owner of the list 
     // must not delete it
@@ -2105,6 +2127,9 @@ void AliESDEvent::ReadFromTree(TTree *tree, Option_t* opt){
     tree->SetBranchAddress("fDAQDetectorPattern",&fDAQDetectorPattern);
     tree->SetBranchAddress("fDAQAttributes",&fDAQAttributes);
     tree->SetBranchAddress("fNTPCClusters",&fNTPCClusters);
+    if (tree->GetBranch("fNTPCTrackBeforeClean")) tree->SetBranchAddress("fNTPCTrackBeforeClean",&fNTPCTrackBeforeClean);
+    if (tree->GetBranch("fNumberOfESDTracks")) tree->SetBranchAddress("fNumberOfESDTracks",&fNumberOfESDTracks);
+
     GetStdContent();
     // when reading back we are not owner of the list 
     // must not delete it
@@ -2867,7 +2892,6 @@ void AliESDEvent::RestoreOfflineV0Prongs()
 {
   // fill redundant prongs info by 0 for offline v0s;
   Int_t nv0=GetNumberOfV0s();
-  const double par0[5]={0.}, cov0[15]={0.};
   double bZ = GetMagneticField();
   for (Int_t n=0; n<nv0; n++) {
     AliESDv0 *v0=GetV0(n);

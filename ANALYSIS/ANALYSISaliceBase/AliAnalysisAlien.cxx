@@ -13,15 +13,9 @@
  * provided "as is" without express or implied warranty.                  *
  **************************************************************************/
 
-// Author: Mihaela Gheata, 01/09/2008
-
-//==============================================================================
-//   AliAnalysisAlien - AliEn utility class. Provides interface for creating
-// a personalized JDL, finding and creating a dataset.
-//==============================================================================
-
 #include "AliAnalysisAlien.h"
 
+#include <Compression.h>		
 #include "Riostream.h"
 #include "TEnv.h"
 #include "TKey.h"
@@ -317,8 +311,8 @@ AliAnalysisAlien::AliAnalysisAlien(const AliAnalysisAlien& other)
                   fTreeName(other.fTreeName)
 {
 // Copy ctor.
-   fGridJDL = (TGridJDL*)gROOT->ProcessLine("new TAlienJDL()");
-   fMergingJDL = (TGridJDL*)gROOT->ProcessLine("new TAlienJDL()");
+   fGridJDL = gGrid->GetJDLGenerator();
+   fMergingJDL = gGrid->GetJDLGenerator();
    fRunRange[0] = other.fRunRange[0];
    fRunRange[1] = other.fRunRange[1];
    if (other.fInputFiles) {
@@ -365,8 +359,8 @@ AliAnalysisAlien &AliAnalysisAlien::operator=(const AliAnalysisAlien& other)
 // Assignment.
    if (this != &other) {
       AliAnalysisGrid::operator=(other);
-      fGridJDL = (TGridJDL*)gROOT->ProcessLine("new TAlienJDL()");
-      fMergingJDL = (TGridJDL*)gROOT->ProcessLine("new TAlienJDL()");
+      fGridJDL = gGrid->GetJDLGenerator();
+      fMergingJDL = gGrid->GetJDLGenerator();
       fPrice                   = other.fPrice;
       fTTL                     = other.fTTL;
       fSplitMaxInputFileNumber = other.fSplitMaxInputFileNumber;
@@ -940,6 +934,7 @@ Bool_t AliAnalysisAlien::CheckFileCopy(const char *alienpath)
    }
    TString stest = "plugin_test_copy";
    TFile f(stest, "RECREATE");
+   f.SetCompressionSettings(ROOT::CompressionSettings(ROOT::kZLIB, 1));
    // User may not have write permissions to current directory 
    if (f.IsZombie()) {
       Error("CheckFileCopy", "Cannot create local test file. Do you have write access to current directory: <%s> ?",
@@ -1300,12 +1295,13 @@ Bool_t AliAnalysisAlien::CreateDataset(const char *pattern)
          }
          if (ncount == gMaxEntries) {
             Info("CreateDataset", "Dataset %s has more than 15K entries. Trying to merge...", file.Data());
-            cadd = (TGridCollection*)gROOT->ProcessLine(Form("new TAlienCollection(\"__tmp%d__%s\", 1000000);",stage,file.Data()));
+            cadd = gGrid->OpenCollection(Form("__tmp%d__%s", stage, file.Data()), 1000000);
             if (!cbase) cbase = cadd;
             else {
 	      // cholm - Avoid using very slow TAlienCollection 
 	      // cbase->Add(cadd);
 	      // cholm - Use AddFast (via interpreter)
+        // TODO: nhardi, Jan 2019
 	      gROOT->ProcessLine(Form("((TAlienCollection*)%p)->AddFast((TGridCollection*)%p)",cbase,cadd));
                delete cadd;
             }   
@@ -4035,6 +4031,7 @@ void AliAnalysisAlien::WriteAnalysisFile()
       }
       TDirectory *cdir = gDirectory;
       TFile *file = TFile::Open(analysisFile, "RECREATE");
+      file->SetCompressionSettings(ROOT::CompressionSettings(ROOT::kZLIB, 1));
       if (file) {
          // Skip task Terminate calls for the grid job (but not in test mode, where we want to check also the terminate mode
          if (!TestBit(AliAnalysisGrid::kTest)) mgr->SetSkipTerminate(kTRUE);

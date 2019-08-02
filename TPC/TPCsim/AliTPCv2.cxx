@@ -1693,7 +1693,7 @@ TGeoCompositeShape *tpcorh9 = new TGeoCompositeShape("tpcorh9", "tpcorh1-tpcorh2
 //
 // outer rod plug left
 //
-TGeoPcon *outplug = new TGeoPcon("outplug", 0.0, 360.0, 14); 
+TGeoPcon *outplug = new TGeoPcon("outplug", 0.0, 360.0, 13); 
 
 outplug->DefineSection(0, 0.5, 0.0, 2.2);
 outplug->DefineSection(1, 0.7, 0.0, 2.2);
@@ -1707,14 +1707,14 @@ outplug->DefineSection(5, 1.2, 1.55, 1.75);
 outplug->DefineSection(6, 1.2, 1.55, 2.2);
 outplug->DefineSection(7, 1.875, 1.55, 2.2);
 
-outplug->DefineSection(8, 1.875, 1.55, 2.2);
-outplug->DefineSection(9, 2.47, 1.75, 2.2);
 
-outplug->DefineSection(10, 2.47, 1.75, 2.08);
-outplug->DefineSection(11, 2.57, 1.8, 2.08);
+outplug->DefineSection(8, 2.47, 1.75, 2.2);
 
-outplug->DefineSection(12, 2.57, 1.92, 2.08);
-outplug->DefineSection(13, 2.95, 1.92, 2.08);
+outplug->DefineSection(9, 2.47, 1.75, 2.08);
+outplug->DefineSection(10, 2.57, 1.8, 2.08);
+
+outplug->DefineSection(11, 2.57, 1.92, 2.08);
+outplug->DefineSection(12, 2.95, 1.92, 2.08);
 //
 shift1[0] = 0.0;
 shift1[1] = 2.09;
@@ -2300,6 +2300,7 @@ void AliTPCv2::StepManager()
   // Called for every step in the Time Projection Chamber
   //
 
+  const Int_t   kPdgMonopole = 60000000; // PDG value of a magnetic monopole
   const Int_t   kMaxDistRef =15;     // maximal difference between 2 stored references
   const Float_t kbig = 1.e10;
 
@@ -2320,8 +2321,9 @@ void AliTPCv2::StepManager()
   if(!mc->IsTrackAlive()) return; // particle has disappeared
   
   Float_t charge = mc->TrackCharge();
+  Int_t   pdg    = mc->TrackPid();
   
-  if(TMath::Abs(charge)<=0.) return; // take only charged particles
+  if(TMath::Abs(charge)<=0. && pdg!=kPdgMonopole) return; // take only charged particles (except magnetic monopoles)
   
   // check the sensitive volume
 
@@ -2453,17 +2455,24 @@ void AliTPCv2::StepManager()
     const Double_t Kmax = TMath::Power(Emax, alpha_p1);
     const Double_t wIon = fTPCParam->GetWmean();
 
-    for(Int_t n = 0; n < nColl; n++) {
-      // Use GEANT3 / NA49 expression:
-      // P(Edep) ~ k * Edep^alpha
-      // Emin(~I) < Edep < Emax(300 electrons)
-      // k fixed so that Int_Emin^EMax P(Edep) = 1.
-      const Double_t rndm = mc->GetRandom()->Rndm();
-      const Double_t Edep = TMath::Power((Kmax - Kmin) * rndm + Kmin, 1.0/alpha_p1);
-      Int_t nel_step = (Int_t)((Edep-Emin)/wIon) + 1;
-      nel_step = TMath::Min(nel_step,300); // 300 electrons corresponds to 10 keV
-      nel += nel_step;
+    // special treatmeant of magnetic monopoles
+    if(pdg==kPdgMonopole){
+      nel = (Int_t)((mc->Edep()-Emin)/wIon) + 1;
     }
+    else{
+      for(Int_t n = 0; n < nColl; n++) {
+	// Use GEANT3 / NA49 expression:
+	// P(Edep) ~ k * Edep^alpha
+	// Emin(~I) < Edep < Emax(300 electrons)
+	// k fixed so that Int_Emin^EMax P(Edep) = 1.
+	const Double_t rndm = mc->GetRandom()->Rndm();
+	const Double_t Edep = TMath::Power((Kmax - Kmin) * rndm + Kmin, 1.0/alpha_p1);
+	Int_t nel_step = (Int_t)((Edep-Emin)/wIon) + 1;
+	nel_step = TMath::Min(nel_step,300); // 300 electrons corresponds to 10 keV
+	nel += nel_step;
+      }
+    }
+
     //
     mc->TrackPosition(p);
     hits[0]=p[0];

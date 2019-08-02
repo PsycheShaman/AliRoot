@@ -166,6 +166,10 @@ AliGenHijing::~AliGenHijing()
 void AliGenHijing::Init()
 {
 // Initialisation
+
+    // Coeffs to go from mm / mm to meter / second
+    SetGeneratorUnitsForMeterSecond(1.e-3, 1e-3/TMath::C()); 
+  
     fFrame.Resize(8);
     fTarget.Resize(8);
     fProjectile.Resize(8);
@@ -461,8 +465,10 @@ void AliGenHijing::Generate()
 		 //printf(" Putting spec.p from targ. %d into the stack\n", countSpecTp);
 	      }
 	      PushTrack(tFlag,imo,kf,p,origin,polar,tof,kPNoProcess,nt, 1., ks);
-	      fNprimaries++;
-	      KeepTrack(nt);
+	      if (nt>=0) {
+		fNprimaries++;
+		KeepTrack(nt);
+	      }
 	      newPos[i] = nt;
 	  } // if selected
       } // particle loop
